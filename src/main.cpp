@@ -3,7 +3,7 @@
 // sends as OpenTrack UDP to VRto3D. Console app for parameter tuning.
 //
 // Usage: Run with VRto3D (use_open_track=true, port 4242) + SteamVR active.
-//        Lean head to rotate camera. Use keyboard to tune parameters.
+//        Lean head to rotate camera. Use Ctrl+key shortcuts to tune parameters.
 
 #define NOMINMAX
 #include <winsock2.h>  // Must be before windows.h
@@ -29,6 +29,25 @@
 #include "one_euro_filter.h"
 #include "track_pipeline.h"
 #include "opentrack_udp.h"
+
+// Ctrl+letter codes returned by _getch() on Windows
+#define CTRL_A  1
+#define CTRL_B  2
+#define CTRL_C  3
+#define CTRL_D  4
+#define CTRL_E  5
+#define CTRL_F  6
+#define CTRL_G  7
+#define CTRL_H  8
+#define CTRL_J  10
+#define CTRL_K  11
+#define CTRL_L  12
+#define CTRL_M  13
+#define CTRL_N  14
+#define CTRL_P  16
+#define CTRL_Q  17
+#define CTRL_R  18
+#define CTRL_S  19
 
 // --- Eye data listener ---
 
@@ -64,11 +83,10 @@ public:
     }
 };
 
-// --- Config file (Documents\My Games\leia_track\config.txt) ---
+// --- Config file (Steam/config/vrto3d/) ---
 
 static std::string get_config_path() {
     // Config lives in Steam/config/vrto3d/ alongside VRto3D's config
-    // Find Steam path via registry
     char steam_path[MAX_PATH] = {};
     DWORD size = sizeof(steam_path);
     HKEY key;
@@ -100,7 +118,7 @@ static bool save_config(const TrackConfig& cfg) {
     if (!f.is_open()) return false;
 
     f << "# Leia Track App — Settings\n";
-    f << "# Edit values or tune in-app and press S to save.\n\n";
+    f << "# Edit values or tune in-app with Ctrl+key and press Ctrl+S to save.\n\n";
     f << "filter_mincutoff = " << cfg.filter_mincutoff << "\n";
     f << "filter_beta = " << cfg.filter_beta << "\n";
     f << "sens_yaw = " << cfg.sens_yaw << "\n";
@@ -131,7 +149,6 @@ static bool load_config(TrackConfig& cfg) {
         std::string key = line.substr(0, eq);
         std::string val = line.substr(eq + 1);
 
-        // Trim whitespace
         auto trim = [](std::string& s) {
             while (!s.empty() && s.front() == ' ') s.erase(s.begin());
             while (!s.empty() && s.back() == ' ') s.pop_back();
@@ -141,7 +158,7 @@ static bool load_config(TrackConfig& cfg) {
 
         try {
             float v = std::stof(val);
-            if (!std::isfinite(v)) continue;  // NaN guard
+            if (!std::isfinite(v)) continue;
 
             if (key == "filter_mincutoff") cfg.filter_mincutoff = v;
             else if (key == "filter_beta") cfg.filter_beta = v;
@@ -154,7 +171,7 @@ static bool load_config(TrackConfig& cfg) {
             else if (key == "max_yaw") cfg.max_yaw = v;
             else if (key == "max_pitch") cfg.max_pitch = v;
         } catch (...) {
-            continue;  // Skip unparseable lines
+            continue;
         }
     }
     return true;
@@ -168,37 +185,38 @@ static void print_help() {
     std::printf("========================================================\n");
     std::printf("  Tracks head lean via eye positions, filters noise,\n");
     std::printf("  converts to camera rotation, sends to VRto3D.\n");
+    std::printf("  All hotkeys use Ctrl+ to avoid game conflicts.\n");
     std::printf("\n");
     std::printf("  CALIBRATION\n");
-    std::printf("    C  = Set current head position as center\n");
-    std::printf("         (look straight at the screen, sit naturally)\n");
+    std::printf("    Ctrl+C = Set current head position as center\n");
+    std::printf("             (look straight at the screen, sit naturally)\n");
     std::printf("\n");
     std::printf("  SMOOTHING (One-Euro Filter)\n");
-    std::printf("    1  = More smooth at rest    (min_cutoff down)\n");
-    std::printf("    2  = Less smooth at rest    (min_cutoff up)\n");
-    std::printf("         Low = silky but laggy. High = responsive but jittery.\n");
-    std::printf("    3  = Slower response        (beta down)\n");
-    std::printf("    4  = Faster response        (beta up)\n");
-    std::printf("         Controls how quickly the filter reacts to fast moves.\n");
+    std::printf("    Ctrl+A = More smooth at rest    (min_cutoff down)\n");
+    std::printf("    Ctrl+D = Less smooth at rest    (min_cutoff up)\n");
+    std::printf("             Low = silky but laggy. High = responsive but jittery.\n");
+    std::printf("    Ctrl+E = Slower response        (beta down)\n");
+    std::printf("    Ctrl+F = Faster response        (beta up)\n");
+    std::printf("             Controls how quickly the filter reacts to fast moves.\n");
     std::printf("\n");
     std::printf("  SENSITIVITY\n");
-    std::printf("    5  = Less yaw  (left/right)\n");
-    std::printf("    6  = More yaw  (left/right)\n");
-    std::printf("    7  = Less pitch (up/down)\n");
-    std::printf("    8  = More pitch (up/down)\n");
-    std::printf("         Degrees of camera rotation per cm of head lean.\n");
+    std::printf("    Ctrl+J = Less yaw  (left/right)\n");
+    std::printf("    Ctrl+K = More yaw  (left/right)\n");
+    std::printf("    Ctrl+N = Less pitch (up/down)\n");
+    std::printf("    Ctrl+M = More pitch (up/down)\n");
+    std::printf("             Degrees of camera rotation per cm of head lean.\n");
     std::printf("\n");
     std::printf("  CURVE\n");
-    std::printf("    9  = More linear (equal response everywhere)\n");
-    std::printf("    0  = More curved (gentle center, aggressive edges)\n");
-    std::printf("         1.0 = perfectly linear. 2.0+ = TrackIR-style curve.\n");
+    std::printf("    Ctrl+G = More linear (equal response everywhere)\n");
+    std::printf("    Ctrl+B = More curved (gentle center, aggressive edges)\n");
+    std::printf("             1.0 = perfectly linear. 2.0+ = TrackIR-style curve.\n");
     std::printf("\n");
     std::printf("  OTHER\n");
-    std::printf("    S  = Save settings to file (persists across sessions)\n");
-    std::printf("    L  = Load settings from file\n");
-    std::printf("    P  = Print current settings\n");
-    std::printf("    H  = Show this help\n");
-    std::printf("    Q  = Quit (sends camera back to center first)\n");
+    std::printf("    Ctrl+S = Save settings to file (persists across sessions)\n");
+    std::printf("    Ctrl+L = Load settings from file\n");
+    std::printf("    Ctrl+P = Print current settings\n");
+    std::printf("    Ctrl+H = Show this help\n");
+    std::printf("    Ctrl+Q = Quit (sends camera back to center first)\n");
     std::printf("========================================================\n");
     std::printf("  Status: Lean=position offset | Filt=after filter\n");
     std::printf("  Out=degrees sent | UDP=packets sent | FAIL=send errors\n");
@@ -210,15 +228,15 @@ static void print_config(const TrackConfig& cfg) {
     std::printf("  Current Settings                       Leia Track App\n");
     std::printf("========================================================\n");
     std::printf("\n  Smoothing (One-Euro Filter)\n");
-    std::printf("    min_cutoff  = %.4f   How smooth at rest (1/2)\n", cfg.filter_mincutoff);
+    std::printf("    min_cutoff  = %.4f   How smooth at rest (Ctrl+A/D)\n", cfg.filter_mincutoff);
     std::printf("                          Lower = silkier, higher = snappier\n");
-    std::printf("    beta        = %.4f   How fast it reacts to movement (3/4)\n", cfg.filter_beta);
+    std::printf("    beta        = %.4f   How fast it reacts to movement (Ctrl+E/F)\n", cfg.filter_beta);
     std::printf("                          Lower = smoother turns, higher = instant\n");
     std::printf("\n  Sensitivity\n");
-    std::printf("    yaw         = %.1f      Degrees per cm of left/right lean (5/6)\n", cfg.sens_yaw);
-    std::printf("    pitch       = %.1f      Degrees per cm of up/down lean (7/8)\n", cfg.sens_pitch);
+    std::printf("    yaw         = %.1f      Degrees per cm of left/right lean (Ctrl+J/K)\n", cfg.sens_yaw);
+    std::printf("    pitch       = %.1f      Degrees per cm of up/down lean (Ctrl+N/M)\n", cfg.sens_pitch);
     std::printf("\n  Response Curve\n");
-    std::printf("    curve_power = %.2f     Shape of the response (9/0)\n", cfg.curve_power);
+    std::printf("    curve_power = %.2f     Shape of the response (Ctrl+G/B)\n", cfg.curve_power);
     std::printf("                          1.0 = linear, 2.0+ = gentle center, fast edges\n");
     std::printf("\n  Center Feel\n");
     std::printf("    mag_strength = %.2f    How strongly it pulls back to center\n", cfg.mag_strength);
@@ -233,6 +251,9 @@ static void print_config(const TrackConfig& cfg) {
 // --- Main ---
 
 int main() {
+    // Disable default Ctrl+C handler so it doesn't kill the app
+    SetConsoleCtrlHandler(nullptr, TRUE);
+
     std::printf("========================================================\n");
     std::printf("  Leia Track App v0.1              by evilkermitreturns\n");
     std::printf("========================================================\n");
@@ -357,83 +378,89 @@ int main() {
         while (_kbhit()) {
             int key = _getch();
             switch (key) {
-                case 'q': case 'Q':
+                case CTRL_Q:
                     running = false;
                     break;
-                case 'c': case 'C':
+                case CTRL_C:
                     if (listener.get(left, right, time_us)) {
                         pipeline.calibrate(left, right);
                         std::printf("\n  [CALIBRATED] Center reset.\n");
                     }
                     break;
 
-                case '1':
+                // Smoothing: Ctrl+A/D = min_cutoff down/up
+                case CTRL_A:
                     cfg.filter_mincutoff = std::max(0.001f, cfg.filter_mincutoff / 2.0f);
                     pipeline.config().filter_mincutoff = cfg.filter_mincutoff;
                     pipeline.reset_filters();
                     std::printf("\n  min_cutoff = %.4f (smoother)\n", cfg.filter_mincutoff);
                     break;
-                case '2':
+                case CTRL_D:
                     cfg.filter_mincutoff = std::min(10.0f, cfg.filter_mincutoff * 2.0f);
                     pipeline.config().filter_mincutoff = cfg.filter_mincutoff;
                     pipeline.reset_filters();
                     std::printf("\n  min_cutoff = %.4f (less smooth)\n", cfg.filter_mincutoff);
                     break;
 
-                case '3':
+                // Response: Ctrl+E/F = beta down/up
+                case CTRL_E:
                     cfg.filter_beta = std::max(0.001f, cfg.filter_beta / 10.0f);
                     pipeline.config().filter_beta = cfg.filter_beta;
                     pipeline.reset_filters();
                     std::printf("\n  beta = %.4f (less responsive)\n", cfg.filter_beta);
                     break;
-                case '4':
+                case CTRL_F:
                     cfg.filter_beta = std::min(100.0f, cfg.filter_beta * 10.0f);
                     pipeline.config().filter_beta = cfg.filter_beta;
                     pipeline.reset_filters();
                     std::printf("\n  beta = %.4f (more responsive)\n", cfg.filter_beta);
                     break;
 
-                case '5':
+                // Yaw sensitivity: Ctrl+J/K
+                case CTRL_J:
                     cfg.sens_yaw = std::max(0.5f, cfg.sens_yaw - 0.5f);
                     pipeline.config().sens_yaw = cfg.sens_yaw;
                     std::printf("\n  sens_yaw = %.1f\n", cfg.sens_yaw);
                     break;
-                case '6':
+                case CTRL_K:
                     cfg.sens_yaw = std::min(20.0f, cfg.sens_yaw + 0.5f);
                     pipeline.config().sens_yaw = cfg.sens_yaw;
                     std::printf("\n  sens_yaw = %.1f\n", cfg.sens_yaw);
                     break;
 
-                case '7':
+                // Pitch sensitivity: Ctrl+N/M
+                case CTRL_N:
                     cfg.sens_pitch = std::max(0.5f, cfg.sens_pitch - 0.5f);
                     pipeline.config().sens_pitch = cfg.sens_pitch;
                     std::printf("\n  sens_pitch = %.1f\n", cfg.sens_pitch);
                     break;
-                case '8':
+                case CTRL_M:
                     cfg.sens_pitch = std::min(20.0f, cfg.sens_pitch + 0.5f);
                     pipeline.config().sens_pitch = cfg.sens_pitch;
                     std::printf("\n  sens_pitch = %.1f\n", cfg.sens_pitch);
                     break;
 
-                case '9':
+                // Curve: Ctrl+G/B = more linear / more curved
+                case CTRL_G:
                     cfg.curve_power = std::max(1.0f, cfg.curve_power - 0.1f);
                     pipeline.config().curve_power = cfg.curve_power;
                     std::printf("\n  curve_power = %.2f\n", cfg.curve_power);
                     break;
-                case '0':
+                case CTRL_B:
                     cfg.curve_power = std::min(3.0f, cfg.curve_power + 0.1f);
                     pipeline.config().curve_power = cfg.curve_power;
                     std::printf("\n  curve_power = %.2f\n", cfg.curve_power);
                     break;
 
-                case 's': case 'S':
+                // Save/Load
+                case CTRL_S:
                     if (save_config(cfg)) {
                         std::printf("\n  [SAVED] %s\n", get_config_path().c_str());
                     } else {
                         std::printf("\n  [ERROR] Could not save config.\n");
                     }
                     break;
-                case 'l': case 'L': {
+                case CTRL_L: {
                     TrackConfig loaded;
                     if (load_config(loaded)) {
                         cfg = loaded;
@@ -446,10 +473,10 @@ int main() {
                     break;
                 }
 
-                case 'p': case 'P':
+                case CTRL_P:
                     print_config(cfg);
                     break;
-                case 'h': case 'H':
+                case CTRL_H:
                     print_help();
                     break;
             }

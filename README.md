@@ -19,24 +19,26 @@ Reads eye positions from the Leia SR SDK, applies a [One-Euro filter](https://ge
 2. Launch SteamVR
 3. Launch your game
 4. Run `leia_track_app.exe`
-5. Press **C** to calibrate your sitting position (look straight at the screen)
+5. Press **Ctrl+C** to calibrate your sitting position (look straight at the screen)
 6. Lean to look around!
 
 ## Controls
 
+All hotkeys use **Ctrl+key** to avoid conflicts with game input.
+
 | Key | Action |
 |-----|--------|
-| **C** | Calibrate center position |
-| **1/2** | Smoothness at rest (min_cutoff down/up) |
-| **3/4** | Movement response speed (beta down/up) |
-| **5/6** | Yaw sensitivity (left/right lean) |
-| **7/8** | Pitch sensitivity (up/down lean) |
-| **9/0** | Response curve (linear / curved) |
-| **S** | Save settings to file |
-| **L** | Load settings from file |
-| **P** | Print current settings |
-| **H** | Show help |
-| **Q** | Quit |
+| **Ctrl+C** | Calibrate center position |
+| **Ctrl+A/D** | Smoothness at rest (min_cutoff down/up) |
+| **Ctrl+E/F** | Movement response speed (beta down/up) |
+| **Ctrl+J/K** | Yaw sensitivity (left/right lean) |
+| **Ctrl+N/M** | Pitch sensitivity (up/down lean) |
+| **Ctrl+G/B** | Response curve (more linear / more curved) |
+| **Ctrl+S** | Save settings to file |
+| **Ctrl+L** | Load settings from file |
+| **Ctrl+P** | Print current settings |
+| **Ctrl+H** | Show help |
+| **Ctrl+Q** | Quit |
 
 ## Settings
 
@@ -82,10 +84,10 @@ Leia IR Camera → SR SDK (eye positions)
 
 ## Tips
 
-- **Calibrate often** — press C whenever you shift in your seat
+- **Calibrate often** — press Ctrl+C whenever you shift in your seat
 - **Good lighting helps** — the IR camera works best with some ambient light
-- **For racing/flight sims** — try lower sensitivity (keys 5/7) for subtle looks
-- **For action games** — try higher sensitivity (keys 6/8) for quick glances
+- **For racing/flight sims** — try lower sensitivity (Ctrl+J/N) for subtle looks
+- **For action games** — try higher sensitivity (Ctrl+K/M) for quick glances
 - **VRto3D's `launch_script`** — set to `"start leia_track_app.exe"` to auto-launch with VRto3D
 
 ## License
