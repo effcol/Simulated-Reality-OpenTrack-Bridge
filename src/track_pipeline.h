@@ -25,7 +25,7 @@ struct TrackConfig {
 
     // Output clamp (degrees)
     float max_yaw          = 45.0f;
-    float max_pitch        = 15.0f;
+    float max_pitch        = 45.0f;
 
     // Dead zone
     float dead_zone_cm     = 0.2f;
