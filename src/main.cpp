@@ -1,9 +1,9 @@
-// leia_track_app — Standalone Leia eye tracking to OpenTrack UDP converter
-// Reads Leia SDK eye positions, filters with One-Euro, maps lean to rotation,
-// sends as OpenTrack UDP to VRto3D. Console app for parameter tuning.
+// Simulated_Reality_OpenTrack_Bridge — Standalone Leia head pose to OpenTrack UDP converter
+// Reads LeiaSR Runtime head pose, filters orientation, forwards 6DOF to OpenTrack,
+// sends as OpenTrack UDP to OpenTrack. Console app for parameter tuning.
 //
-// Usage: Run with VRto3D (use_open_track=true, port 4242) + SteamVR active.
-//        Lean head to rotate camera. Use hotkeys to tune parameters.
+// Usage: Run with OpenTrack.
+//        Turn/tilt naturally. Use hotkeys to tune parameters.
 
 #define NOMINMAX
 #include <winsock2.h>  // Must be before windows.h
@@ -22,8 +22,7 @@
 
 #include "sr/management/srcontext.h"
 #include "sr/utility/exception.h"
-#include "sr/sense/eyetracker/predictingeyetracker.h"
-#include "sr/sense/eyetracker/eyepair.h"
+#include "sr/sense/headtracker/headposetracker.h"
 #include "sr/sense/core/inputstream.h"
 
 #include "one_euro_filter.h"
@@ -34,91 +33,88 @@
 #define CTRL_L  12
 #define CTRL_X  24
 
-// --- Eye data listener ---
+// --- Head pose listener ---
 
-class EyeListener : public SR::EyePairListener {
+class HeadPoseListener : public SR::HeadPoseListener {
     std::mutex mutex_;
-    float left_[3]  = {0.0f, 0.0f, 600.0f};
-    float right_[3] = {65.0f, 0.0f, 600.0f};
+    float pos_[3] = {0.0f, 0.0f, 600.0f};
+    float orient_[3] = {0.0f, 0.0f, 0.0f};
     uint64_t frame_time_ = 0;
     bool has_data_ = false;
 
 public:
-    SR::InputStream<SR::EyePairStream> stream;
+    SR::InputStream<SR::HeadPoseStream> stream;
 
-    void accept(const SR_eyePair& frame) override {
+    void accept(const SR_headPose& frame) override {
         std::lock_guard<std::mutex> lock(mutex_);
-        left_[0]  = static_cast<float>(frame.left.x);
-        left_[1]  = static_cast<float>(frame.left.y);
-        left_[2]  = static_cast<float>(frame.left.z);
-        right_[0] = static_cast<float>(frame.right.x);
-        right_[1] = static_cast<float>(frame.right.y);
-        right_[2] = static_cast<float>(frame.right.z);
+        pos_[0] = static_cast<float>(frame.position.x);
+        pos_[1] = static_cast<float>(frame.position.y);
+        pos_[2] = static_cast<float>(frame.position.z);
+        orient_[0] = static_cast<float>(frame.orientation.x);
+        orient_[1] = static_cast<float>(frame.orientation.y);
+        orient_[2] = static_cast<float>(frame.orientation.z);
         frame_time_ = frame.time;
         has_data_ = true;
     }
 
-    bool get(float left[3], float right[3], uint64_t& time_us) {
+    bool get(float pos[3], float orient[3], uint64_t& time_us) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!has_data_) return false;
-        left[0] = left_[0]; left[1] = left_[1]; left[2] = left_[2];
-        right[0] = right_[0]; right[1] = right_[1]; right[2] = right_[2];
+        pos[0] = pos_[0]; pos[1] = pos_[1]; pos[2] = pos_[2];
+        orient[0] = orient_[0]; orient[1] = orient_[1]; orient[2] = orient_[2];
         time_us = frame_time_;
         return true;
     }
 };
 
-// --- Config file (Steam/config/vrto3d/) ---
+// --- Config file (saved next to executable) ---
 
 static std::string get_config_path() {
-    char steam_path[MAX_PATH] = {};
-    DWORD size = sizeof(steam_path);
-    HKEY key;
-    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\WOW6432Node\\Valve\\Steam", 0, KEY_READ, &key) == ERROR_SUCCESS ||
-        RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Valve\\Steam", 0, KEY_READ, &key) == ERROR_SUCCESS) {
-        RegQueryValueExA(key, "InstallPath", nullptr, nullptr, reinterpret_cast<LPBYTE>(steam_path), &size);
-        RegCloseKey(key);
-    }
-
-    if (steam_path[0] != '\0') {
-        std::string dir = std::string(steam_path) + "\\config\\vrto3d";
-        CreateDirectoryA((std::string(steam_path) + "\\config").c_str(), nullptr);
-        CreateDirectoryA(dir.c_str(), nullptr);
-        return dir + "\\leia_track_config.txt";
-    }
-
-    // Fallback: next to the exe
+    // Save config next to the executable (not in Steam directories)
     char exe_path[MAX_PATH];
     GetModuleFileNameA(nullptr, exe_path, MAX_PATH);
     std::string path(exe_path);
     auto last_slash = path.find_last_of("\\/");
     if (last_slash != std::string::npos) path = path.substr(0, last_slash + 1);
-    return path + "leia_track_config.txt";
+    return path + "opentrack_bridge_config.txt";
 }
 
-static bool save_config(const TrackConfig& cfg) {
+static bool save_config(const TrackConfig& cfg, int output_target) {
     std::string path = get_config_path();
     std::ofstream f(path);
     if (!f.is_open()) return false;
 
-    f << "# Leia Track App — Settings\n";
+    f << "# Simulated Reality OpenTrack Bridge — Settings\n";
     f << "# Edit values here or tune in-app with hotkeys (auto-saves).\n\n";
-    f << "filter_mincutoff = " << cfg.filter_mincutoff << "\n";
-    f << "filter_beta = " << cfg.filter_beta << "\n";
+    f << "# Position filter (XYZ)\n";
+    f << "filter_pos_mincutoff = " << cfg.filter_pos_mincutoff << "\n";
+    f << "filter_pos_beta = " << cfg.filter_pos_beta << "\n";
+    f << "# Rotation filter (Yaw/Pitch/Roll) - increase beta for more responsiveness\n";
+    f << "filter_rot_mincutoff = " << cfg.filter_rot_mincutoff << "\n";
+    f << "filter_rot_beta = " << cfg.filter_rot_beta << "\n";
+    f << "angle_deadzone_deg = " << cfg.angle_deadzone_deg << "\n";
+    f << "orientation_radians = " << (cfg.orientation_radians ? 1 : 0) << "\n";
     f << "sens_yaw = " << cfg.sens_yaw << "\n";
     f << "sens_pitch = " << cfg.sens_pitch << "\n";
-    f << "curve_power = " << cfg.curve_power << "\n";
-    f << "mag_strength = " << cfg.mag_strength << "\n";
-    f << "mag_radius = " << cfg.mag_radius << "\n";
-    f << "dead_zone_cm = " << cfg.dead_zone_cm << "\n";
+    f << "sens_roll = " << cfg.sens_roll << "\n";
+    f << "yaw_offset = " << cfg.yaw_offset << "\n";
+    f << "pitch_offset = " << cfg.pitch_offset << "\n";
+    f << "roll_offset = " << cfg.roll_offset << "\n";
     f << "max_yaw = " << cfg.max_yaw << "\n";
     f << "max_pitch = " << cfg.max_pitch << "\n";
+    f << "max_roll = " << cfg.max_roll << "\n";
+    f << "passthrough_translation = " << (cfg.passthrough_translation ? 1 : 0) << "\n";
+    f << "invert_x = " << (cfg.invert_x ? 1 : 0) << "\n";
+    f << "invert_yaw = " << (cfg.invert_yaw ? 1 : 0) << "\n";
+    f << "invert_roll = " << (cfg.invert_roll ? 1 : 0) << "\n";
+    f << "output_mode = " << cfg.output_mode << "\n";
+    f << "output_target = " << output_target << "\n";
 
     f.close();
     return true;
 }
 
-static bool load_config(TrackConfig& cfg) {
+static bool load_config(TrackConfig& cfg, int& output_target) {
     std::string path = get_config_path();
     std::ifstream f(path);
     if (!f.is_open()) return false;
@@ -144,45 +140,112 @@ static bool load_config(TrackConfig& cfg) {
             float v = std::stof(val);
             if (!std::isfinite(v)) continue;
 
-            if (key == "filter_mincutoff") cfg.filter_mincutoff = v;
-            else if (key == "filter_beta") cfg.filter_beta = v;
+            // New separate rotation/position parameters
+            if (key == "filter_pos_mincutoff") cfg.filter_pos_mincutoff = v;
+            else if (key == "filter_pos_beta") cfg.filter_pos_beta = v;
+            else if (key == "filter_rot_mincutoff") cfg.filter_rot_mincutoff = v;
+            else if (key == "filter_rot_beta") cfg.filter_rot_beta = v;
+            // Backward compat: old single parameters set rotation (most tuning was rotation-focused)
+            else if (key == "filter_mincutoff") { cfg.filter_rot_mincutoff = v; cfg.filter_pos_mincutoff = v; }
+            else if (key == "filter_beta") { cfg.filter_rot_beta = v; cfg.filter_pos_beta = v; }
+            else if (key == "orientation_radians") cfg.orientation_radians = (v != 0.0f);
             else if (key == "sens_yaw") cfg.sens_yaw = v;
             else if (key == "sens_pitch") cfg.sens_pitch = v;
-            else if (key == "curve_power") cfg.curve_power = v;
-            else if (key == "mag_strength") cfg.mag_strength = v;
-            else if (key == "mag_radius") cfg.mag_radius = v;
-            else if (key == "dead_zone_cm") cfg.dead_zone_cm = v;
+            else if (key == "sens_roll") cfg.sens_roll = v;
+            else if (key == "yaw_offset") cfg.yaw_offset = v;
+            else if (key == "pitch_offset") cfg.pitch_offset = v;
+            else if (key == "roll_offset") cfg.roll_offset = v;
             else if (key == "max_yaw") cfg.max_yaw = v;
             else if (key == "max_pitch") cfg.max_pitch = v;
+            else if (key == "max_roll") cfg.max_roll = v;
+            else if (key == "passthrough_translation") cfg.passthrough_translation = (v != 0.0f);
+            else if (key == "angle_deadzone_deg") cfg.angle_deadzone_deg = v;
+            else if (key == "invert_x") cfg.invert_x = (v != 0.0f);
+            else if (key == "invert_yaw") cfg.invert_yaw = (v != 0.0f);
+            else if (key == "invert_roll") cfg.invert_roll = (v != 0.0f);
+            else if (key == "output_mode") cfg.output_mode = static_cast<int>(v);
+            else if (key == "output_target") output_target = static_cast<int>(v);
         } catch (...) {
             continue;
         }
     }
+    cfg.output_mode = std::clamp(cfg.output_mode, 1, 5);
+    cfg.angle_deadzone_deg = std::clamp(cfg.angle_deadzone_deg, 0.0f, 5.0f);
+    output_target = std::clamp(output_target, 1, 2);
+    
+    // Clamp filter parameters
+    cfg.filter_pos_mincutoff = std::clamp(cfg.filter_pos_mincutoff, 0.001f, 10.0f);
+    cfg.filter_pos_beta = std::clamp(cfg.filter_pos_beta, 0.001f, 100.0f);
+    cfg.filter_rot_mincutoff = std::clamp(cfg.filter_rot_mincutoff, 0.001f, 10.0f);
+    cfg.filter_rot_beta = std::clamp(cfg.filter_rot_beta, 0.001f, 100.0f);
+    
     return true;
+}
+
+static const char* mode_name(int mode) {
+    switch (mode) {
+        case 1: return "XYZ + Yaw/Pitch (most stable)";
+        case 2: return "XYZ only (position tracking)";
+        case 3: return "Yaw/Pitch only (rotation without roll)";
+        case 4: return "All 6 DOF (full 6DOF tracking)";
+        case 5: return "Yaw/Pitch/Roll only (full 3DOF rotation)";
+        default: return "Unknown";
+    }
+}
+
+// 1 = OpenTrack, 2 = SteamVR/VRto3D
+static const char* output_target_name(int output_target) {
+    return (output_target == 2) ? "SteamVR/VRto3D" : "OpenTrack";
+}
+
+static void apply_output_target(TrackConfig& cfg, int output_target) {
+    if (output_target == 1) {
+        // OpenTrack convention (needs inversion)
+        cfg.invert_x = true;
+        cfg.invert_yaw = true;
+        cfg.invert_roll = true;
+    } else {
+        // SteamVR/VRto3D convention (no inversion)
+        cfg.invert_x = false;
+        cfg.invert_yaw = false;
+        cfg.invert_roll = false;
+    }
 }
 
 // --- Console helpers ---
 
 static void print_banner() {
     std::printf("========================================================\n");
-    std::printf("  Leia Track App v0.2              by evilkermitreturns\n");
+    std::printf("  Simulated Reality OpenTrack Bridge v0.1   by evilkermitreturns & effcol\n");
     std::printf("========================================================\n");
-    std::printf("  Leia eye tracking -> One-Euro filter -> OpenTrack UDP\n");
-    std::printf("  Standalone head tracking for any SteamVR game.\n");
-    std::printf("  Requires: Leia display + VRto3D (use_open_track=true)\n");
+    std::printf("  Leia head pose -> One-Euro filter -> OpenTrack UDP\n");
+    std::printf("  Standalone head tracking for any game that supports OpenTrack.\n");
+    std::printf("  Requires: Simulated Reality display + OpenTrack \n");
     std::printf("========================================================\n\n");
     std::printf("  CONTROLS (only active when this window is focused)\n");
-    std::printf("    Ctrl+X  Calibrate center (look straight, sit naturally)\n");
     std::printf("    Ctrl+L  Lock/unlock hotkeys (prevent accidental changes)\n");
-    std::printf("    1/2     Smoothness at rest (min_cutoff down/up)\n");
-    std::printf("    3/4     Movement response (beta down/up)\n");
-    std::printf("    5/6     Yaw sensitivity (left/right lean)\n");
-    std::printf("    7/8     Pitch sensitivity (up/down lean)\n");
-    std::printf("    9/0     Response curve (more linear / more curved)\n");
-    std::printf("    -/=     Max yaw range (down/up)\n");
-    std::printf("    [/]     Max pitch range (down/up)\n");
+    std::printf("    Ctrl+X  Calibrate (set current head orientation as neutral)\n");
+    std::printf("    1/2     Yaw/Pitch/Roll smoothness (min_cutoff down/up)\n");
+    std::printf("    3/4     Yaw/Pitch/Roll response (beta down/up - 4 for more snap)\n");
+    std::printf("    5/6     Yaw sensitivity (down/up)\n");
+    std::printf("    7/8     Pitch sensitivity (down/up)\n");
+    std::printf("    9/0     Roll sensitivity (down/up)\n");
+    std::printf("    -/=     Toggle translation passthrough\n");
+    std::printf("    [/]     Toggle radians/degrees orientation input\n");
+    std::printf("\n");
+    std::printf("  TRACKING TYPES (recommended: Z or X)\n");
+    std::printf("    Z  XYZ + Yaw/Pitch (3D position + head rotation)\n");
+    std::printf("    X  XYZ only (3D position, no head rotation)\n");
+    std::printf("    C  Yaw/Pitch only (head rotation without roll)\n");
+    std::printf("    V  All 6 axes: X/Y/Z + Yaw/Pitch/Roll (full 6DOF)\n");
+    std::printf("    B  Yaw/Pitch/Roll only (3DOF head rotation only)\n");
+    std::printf("\n");
+    std::printf("  OUTPUT TARGET\n");
+    std::printf("    A  Switch to: OpenTrack (no inversion) **DEFAULT**\n");
+    std::printf("    S  Switch to: SteamVR/VRto3D (with X/Yaw/Roll inversion)\n");
+    std::printf("\n");
     std::printf("  Settings auto-save on every change.\n");
-    std::printf("  Config: Steam/config/vrto3d/leia_track_config.txt\n");
+    std::printf("  Config: opentrack_bridge_config.txt (next to executable)\n");
     std::printf("========================================================\n\n");
 }
 
@@ -204,8 +267,8 @@ int main() {
 
     // 2. Init Leia SDK
     SR::SRContext* context = nullptr;
-    SR::PredictingEyeTracker* tracker = nullptr;
-    EyeListener listener;
+    SR::HeadPoseTracker* tracker = nullptr;
+    HeadPoseListener listener;
 
     try {
         context = new SR::SRContext();
@@ -220,89 +283,94 @@ int main() {
     }
 
     try {
-        tracker = SR::PredictingEyeTracker::create(*context);
-        listener.stream.set(tracker->openEyePairStream(&listener));
+        tracker = SR::HeadPoseTracker::create(*context);
+        listener.stream.set(tracker->openHeadPoseStream(&listener));
         context->initialize();
-        std::printf("[OK] Eye tracker started\n");
+        std::printf("[OK] Head pose tracker started\n");
     } catch (std::exception& e) {
-        std::printf("ERROR: Eye tracker init failed: %s\n", e.what());
+        std::printf("ERROR: Head pose tracker init failed: %s\n", e.what());
         delete context;
         return 1;
     }
 
     // 3. Create pipeline (auto-load saved settings if available)
     TrackConfig cfg;
-    if (load_config(cfg)) {
+    int output_target = 1;
+    if (load_config(cfg, output_target)) {
         std::printf("[OK] Settings loaded from: %s\n", get_config_path().c_str());
     }
+    apply_output_target(cfg, output_target);
     TrackPipeline pipeline(cfg);
 
-    // 4. Wait for first eye data, then calibrate
-    std::printf("\nWaiting for eye data...\n");
-    float left[3], right[3];
+    std::printf("[OK] Output target: %s\n", output_target_name(output_target));
+    std::printf("[OK] Axis inversion: X=%s Yaw=%s Roll=%s\n",
+        cfg.invert_x ? "ON" : "OFF",
+        cfg.invert_yaw ? "ON" : "OFF",
+        cfg.invert_roll ? "ON" : "OFF");
+    std::printf("[OK] Tracking type: %d (%s)\n", cfg.output_mode, mode_name(cfg.output_mode));
+    // 4. Wait for first head pose data
+    std::printf("\nWaiting for head pose data...\n");
+    float pos[3], orient[3];
     uint64_t time_us;
     bool got_first = false;
 
     for (int i = 0; i < 300 && !got_first; ++i) {
-        tracker->predict(80);
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
-        if (listener.get(left, right, time_us)) {
-            float ipd = std::fabs(right[0] - left[0]);
-            if (ipd > 10.0f) got_first = true;
-        }
+        if (listener.get(pos, orient, time_us)) got_first = true;
     }
 
     if (!got_first) {
-        std::printf("WARNING: No face detected after 5 seconds. Calibrating with defaults.\n");
-        left[0] = -32.5f; left[1] = 0.0f; left[2] = 600.0f;
-        right[0] = 32.5f; right[1] = 0.0f; right[2] = 600.0f;
+        std::printf("WARNING: No head pose detected after 5 seconds. Continuing anyway.\n");
     } else {
-        std::printf("[OK] Face detected. IPD = %.1f mm\n", std::fabs(right[0] - left[0]));
+        std::printf("[OK] Head pose stream active.\n");
     }
-
-    pipeline.calibrate(left, right);
-    std::printf("[OK] Center calibrated. Press Ctrl+X to recalibrate.\n\n");
+    std::printf("[OK] Using monitor reference frame (no manual recenter).\n\n");
 
     // 5. Main loop
     auto start_time = std::chrono::high_resolution_clock::now();
     int frame_count = 0;
     int udp_sent_count = 0;
     int udp_fail_count = 0;
-    bool face_lost_announced = false;
+    bool pose_lost_announced = false;
     bool keys_locked = false;
 
     while (true) {
         auto loop_start = std::chrono::high_resolution_clock::now();
 
-        tracker->predict(80);
-
-        if (listener.get(left, right, time_us)) {
+        if (listener.get(pos, orient, time_us)) {
             auto now = std::chrono::high_resolution_clock::now();
             float timestamp_sec = std::chrono::duration<float>(now - start_time).count();
 
-            TrackResult r = pipeline.process(left, right, timestamp_sec);
+            TrackResult r = pipeline.process(
+                pos[0], pos[1], pos[2],
+                orient[0], orient[1], orient[2],
+                timestamp_sec);
 
             if (r.valid) {
-                bool sent_ok = sender.send(r.yaw_deg, r.pitch_deg, r.roll_deg);
+                bool sent_ok = sender.send(
+                    r.pos_x_cm, r.pos_y_cm, r.pos_z_cm,
+                    r.yaw_deg, r.pitch_deg, r.roll_deg);
                 if (sent_ok) udp_sent_count++; else udp_fail_count++;
-                face_lost_announced = false;
+                pose_lost_announced = false;
 
                 if (frame_count % 30 == 0) {
-                    std::printf("\r  Lean: X=%+5.1f Y=%+5.1f | Filt: X=%+5.1f Y=%+5.1f | Out: Yaw=%+6.1f Pitch=%+5.1f | UDP:%d",
-                        r.lean_x_cm, r.lean_y_cm,
-                        r.filt_x_cm, r.filt_y_cm,
-                        r.yaw_deg, r.pitch_deg,
+                    std::printf("\r  Pos(cm): X=%+5.1f Y=%+5.1f Z=%+5.1f | Raw(deg): Y=%+5.1f P=%+5.1f R=%+5.1f | Out: Y=%+5.1f P=%+5.1f R=%+5.1f | UDP:%d",
+                        r.pos_x_cm, r.pos_y_cm, r.pos_z_cm,
+                        r.raw_yaw_deg, r.raw_pitch_deg, r.raw_roll_deg,
+                        r.yaw_deg, r.pitch_deg, r.roll_deg,
                         udp_sent_count);
                     if (udp_fail_count > 0) std::printf(" FAIL:%d", udp_fail_count);
                     if (keys_locked) std::printf(" [LOCKED]");
+                    std::printf(" Z:%d", cfg.output_mode);
+                    std::printf(" T:%s", output_target == 2 ? "SVR" : "OT");
                     std::printf("   ");
                     std::fflush(stdout);
                 }
             } else {
                 sender.sendIdentity();
-                if (!face_lost_announced) {
-                    std::printf("\n  [FACE LOST] Sending identity rotation\n");
-                    face_lost_announced = true;
+                if (!pose_lost_announced) {
+                    std::printf("\n  [POSE LOST] Sending identity rotation\n");
+                    pose_lost_announced = true;
                 }
             }
         }
@@ -313,15 +381,6 @@ int main() {
         while (_kbhit()) {
             int key = _getch();
 
-            // Ctrl+X = calibrate (always works, even when locked)
-            if (key == CTRL_X) {
-                if (listener.get(left, right, time_us)) {
-                    pipeline.calibrate(left, right);
-                    std::printf("\n  [CALIBRATED] Center reset.\n");
-                }
-                continue;
-            }
-
             // Ctrl+L = toggle lock
             if (key == CTRL_L) {
                 keys_locked = !keys_locked;
@@ -331,39 +390,117 @@ int main() {
                 continue;
             }
 
+            // Ctrl+X = calibrate (set current head orientation as neutral)
+            if (key == CTRL_X) {
+                float pos[3], orient[3];
+                uint64_t time_us;
+                if (listener.get(pos, orient, time_us)) {
+                    const float to_deg = cfg.orientation_radians ? (180.0f / static_cast<float>(M_PI)) : 1.0f;
+                    cfg.yaw_offset = -orient[1] * to_deg;
+                    cfg.pitch_offset = -orient[0] * to_deg;
+                    cfg.roll_offset = -orient[2] * to_deg;
+                    pipeline.config().yaw_offset = cfg.yaw_offset;
+                    pipeline.config().pitch_offset = cfg.pitch_offset;
+                    pipeline.config().roll_offset = cfg.roll_offset;
+                    std::printf("\n  [CALIBRATED] Head orientation set as neutral (Yaw/Pitch/Roll now at zero)\n");
+                    config_changed = true;
+                } else {
+                    std::printf("\n  [CALIBRATION FAILED] No head pose data available\n");
+                }
+                continue;
+            }
+
             // All tuning keys below are blocked when locked
             if (keys_locked) continue;
 
             switch (key) {
-                // Smoothing: 1/2 = min_cutoff down/up
+                // Smoothing: 1/2 = rotation min_cutoff down/up (increase = less smooth, more responsive)
                 case '1':
-                    cfg.filter_mincutoff = std::max(0.001f, cfg.filter_mincutoff / 2.0f);
-                    pipeline.config().filter_mincutoff = cfg.filter_mincutoff;
+                    cfg.filter_rot_mincutoff = std::max(0.001f, cfg.filter_rot_mincutoff / 2.0f);
+                    pipeline.config().filter_rot_mincutoff = cfg.filter_rot_mincutoff;
                     pipeline.reset_filters();
-                    std::printf("\n  min_cutoff = %.4f (smoother)\n", cfg.filter_mincutoff);
+                    std::printf("\n  Rotation min_cutoff = %.4f (smoother, less responsive)\n", cfg.filter_rot_mincutoff);
                     config_changed = true;
                     break;
                 case '2':
-                    cfg.filter_mincutoff = std::min(10.0f, cfg.filter_mincutoff * 2.0f);
-                    pipeline.config().filter_mincutoff = cfg.filter_mincutoff;
+                    cfg.filter_rot_mincutoff = std::min(10.0f, cfg.filter_rot_mincutoff * 2.0f);
+                    pipeline.config().filter_rot_mincutoff = cfg.filter_rot_mincutoff;
                     pipeline.reset_filters();
-                    std::printf("\n  min_cutoff = %.4f (less smooth)\n", cfg.filter_mincutoff);
+                    std::printf("\n  Rotation min_cutoff = %.4f (less smooth, more responsive)\n", cfg.filter_rot_mincutoff);
+                    config_changed = true;
+                    break;
+                // Direct output-mode keys on keyboard Z-row
+                case 'z':
+                case 'Z':
+                    cfg.output_mode = 1;
+                    pipeline.config().output_mode = cfg.output_mode;
+                    std::printf("\n  Tracking type 1: %s\n", mode_name(1));
+                    config_changed = true;
+                    break;
+                case 'x':
+                case 'X':
+                    cfg.output_mode = 2;
+                    pipeline.config().output_mode = cfg.output_mode;
+                    std::printf("\n  Tracking type 2: %s\n", mode_name(2));
+                    config_changed = true;
+                    break;
+                case 'c':
+                case 'C':
+                    cfg.output_mode = 3;
+                    pipeline.config().output_mode = cfg.output_mode;
+                    std::printf("\n  Tracking type 3: %s\n", mode_name(3));
+                    config_changed = true;
+                    break;
+                case 'v':
+                case 'V':
+                    cfg.output_mode = 4;
+                    pipeline.config().output_mode = cfg.output_mode;
+                    std::printf("\n  Tracking type 4: %s\n", mode_name(4));
+                    config_changed = true;
+                    break;
+                case 'b':
+                case 'B':
+                    cfg.output_mode = 5;
+                    pipeline.config().output_mode = cfg.output_mode;
+                    std::printf("\n  Tracking type 5: %s\n", mode_name(5));
                     config_changed = true;
                     break;
 
-                // Response: 3/4 = beta down/up
+                // Output target: OpenTrack vs SteamVR/VRto3D
+                case 'a':
+                case 'A':
+                    output_target = 1;
+                    apply_output_target(cfg, output_target);
+                    pipeline.config().invert_x = cfg.invert_x;
+                    pipeline.config().invert_yaw = cfg.invert_yaw;
+                    pipeline.config().invert_roll = cfg.invert_roll;
+                    std::printf("\n  output_target = %s (X/Yaw/Roll inversion ON)\n", output_target_name(output_target));
+                    config_changed = true;
+                    break;
+                case 's':
+                case 'S':
+                    output_target = 2;
+                    apply_output_target(cfg, output_target);
+                    pipeline.config().invert_x = cfg.invert_x;
+                    pipeline.config().invert_yaw = cfg.invert_yaw;
+                    pipeline.config().invert_roll = cfg.invert_roll;
+                    std::printf("\n  output_target = %s (X/Yaw/Roll inversion OFF)\n", output_target_name(output_target));
+                    config_changed = true;
+                    break;
+
+                // Response: 3/4 = rotation beta down/up (increase = more responsive to head turns)
                 case '3':
-                    cfg.filter_beta = std::max(0.001f, cfg.filter_beta / 10.0f);
-                    pipeline.config().filter_beta = cfg.filter_beta;
+                    cfg.filter_rot_beta = std::max(0.001f, cfg.filter_rot_beta / 10.0f);
+                    pipeline.config().filter_rot_beta = cfg.filter_rot_beta;
                     pipeline.reset_filters();
-                    std::printf("\n  beta = %.4f (less responsive)\n", cfg.filter_beta);
+                    std::printf("\n  Rotation beta = %.4f (slower to adapt, less responsive)\n", cfg.filter_rot_beta);
                     config_changed = true;
                     break;
                 case '4':
-                    cfg.filter_beta = std::min(100.0f, cfg.filter_beta * 10.0f);
-                    pipeline.config().filter_beta = cfg.filter_beta;
+                    cfg.filter_rot_beta = std::min(100.0f, cfg.filter_rot_beta * 10.0f);
+                    pipeline.config().filter_rot_beta = cfg.filter_rot_beta;
                     pipeline.reset_filters();
-                    std::printf("\n  beta = %.4f (more responsive)\n", cfg.filter_beta);
+                    std::printf("\n  Rotation beta = %.4f (faster to adapt, more responsive - TRY THIS!)\n", cfg.filter_rot_beta);
                     config_changed = true;
                     break;
 
@@ -395,45 +532,36 @@ int main() {
                     config_changed = true;
                     break;
 
-                // Curve: 9/0
+                // Roll sensitivity: 9/0
                 case '9':
-                    cfg.curve_power = std::max(1.0f, cfg.curve_power - 0.1f);
-                    pipeline.config().curve_power = cfg.curve_power;
-                    std::printf("\n  curve_power = %.2f\n", cfg.curve_power);
+                    cfg.sens_roll = std::max(0.5f, cfg.sens_roll - 0.5f);
+                    pipeline.config().sens_roll = cfg.sens_roll;
+                    std::printf("\n  sens_roll = %.1f\n", cfg.sens_roll);
                     config_changed = true;
                     break;
                 case '0':
-                    cfg.curve_power = std::min(3.0f, cfg.curve_power + 0.1f);
-                    pipeline.config().curve_power = cfg.curve_power;
-                    std::printf("\n  curve_power = %.2f\n", cfg.curve_power);
+                    cfg.sens_roll = std::min(20.0f, cfg.sens_roll + 0.5f);
+                    pipeline.config().sens_roll = cfg.sens_roll;
+                    std::printf("\n  sens_roll = %.1f\n", cfg.sens_roll);
                     config_changed = true;
                     break;
 
-                // Max yaw: -/=
+                // Toggle translation passthrough
                 case '-':
-                    cfg.max_yaw = std::max(5.0f, cfg.max_yaw - 5.0f);
-                    pipeline.config().max_yaw = cfg.max_yaw;
-                    std::printf("\n  max_yaw = %.0f deg\n", cfg.max_yaw);
-                    config_changed = true;
-                    break;
                 case '=':
-                    cfg.max_yaw = std::min(90.0f, cfg.max_yaw + 5.0f);
-                    pipeline.config().max_yaw = cfg.max_yaw;
-                    std::printf("\n  max_yaw = %.0f deg\n", cfg.max_yaw);
+                    cfg.passthrough_translation = !cfg.passthrough_translation;
+                    pipeline.config().passthrough_translation = cfg.passthrough_translation;
+                    std::printf("\n  passthrough_translation = %s\n", cfg.passthrough_translation ? "ON" : "OFF");
                     config_changed = true;
                     break;
 
-                // Max pitch: [/]
+                // Toggle orientation units
                 case '[':
-                    cfg.max_pitch = std::max(5.0f, cfg.max_pitch - 5.0f);
-                    pipeline.config().max_pitch = cfg.max_pitch;
-                    std::printf("\n  max_pitch = %.0f deg\n", cfg.max_pitch);
-                    config_changed = true;
-                    break;
                 case ']':
-                    cfg.max_pitch = std::min(90.0f, cfg.max_pitch + 5.0f);
-                    pipeline.config().max_pitch = cfg.max_pitch;
-                    std::printf("\n  max_pitch = %.0f deg\n", cfg.max_pitch);
+                    cfg.orientation_radians = !cfg.orientation_radians;
+                    pipeline.config().orientation_radians = cfg.orientation_radians;
+                    pipeline.reset_filters();
+                    std::printf("\n  orientation_radians = %s\n", cfg.orientation_radians ? "ON" : "OFF");
                     config_changed = true;
                     break;
             }
@@ -441,7 +569,7 @@ int main() {
 
         // Auto-save on any change
         if (config_changed) {
-            save_config(cfg);
+            save_config(cfg, output_target);
         }
 
         frame_count++;
