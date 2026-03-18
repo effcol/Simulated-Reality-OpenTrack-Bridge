@@ -48,12 +48,16 @@ public:
         return true;
     }
 
-    bool send(double yaw, double pitch, double roll) {
+    bool send(double x, double y, double z, double yaw, double pitch, double roll) {
         if (!initialized_) return false;
-        TOpenTrack pkt = {0.0, 0.0, 0.0, yaw, pitch, roll};
+        TOpenTrack pkt = {x, y, z, yaw, pitch, roll};
         int sent = sendto(sock_, reinterpret_cast<const char*>(&pkt), sizeof(pkt), 0,
                           reinterpret_cast<sockaddr*>(&dest_), sizeof(dest_));
         return sent == sizeof(pkt);
+    }
+
+    bool send(double yaw, double pitch, double roll) {
+        return send(0.0, 0.0, 0.0, yaw, pitch, roll);
     }
 
     // Send identity rotation (camera returns to center)
