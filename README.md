@@ -39,7 +39,6 @@ Some of the games playable in 3D and headtracking on Leia Simulated Reality moni
 
 - Leia Simulated Reality display (e.g. Acer SpatialLabs, Samsung Odyssey 3D) with LeiaSR Runtime installed and running
 - [OpenTrack](https://github.com/opentrack/opentrack)
-- SteamVR
 - [LeiaSR SDK](https://www.immersity.ai/sdk/) (for building from source)
 
 ## How to start
