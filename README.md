@@ -1,42 +1,90 @@
-# Leia Track App
+# Simulated Reality OpenTrack Bridge
 
-Standalone head tracking for any SteamVR game using a Leia autostereoscopic display.
+**A fork of Leia Track App focused on OpenTrack integration with full 6DOF head tracking support.**
 
-Reads eye positions from the Leia SR SDK, applies a [One-Euro filter](https://gery.casiez.net/1euro/) for smooth noise rejection, maps head lean to camera rotation, and sends it as OpenTrack UDP to [VRto3D](https://github.com/oneup03/VRto3D).
+Standalone head tracking for any OpenTrack-compatible game using a Leia Simulated Reality sparse lightfield display.
 
-**by [evilkermitreturns](https://github.com/evilkermitreturns)**
+Reads head pose from the LeiaSR Runtime, applies a [One-Euro filter](https://gery.casiez.net/1euro/) for smooth adaptive filtering on yaw, pitch and roll, and sends stable 6DOF pose (position + orientation) as OpenTrack UDP to [OpenTrack](https://github.com/opentrack/opentrack).
+
+## Games
+
+Some of the games playable in 3D and headtracking on Leia Simulated Reality monitors:
+
+| Title | 3D support | OpenTrack Support |
+|-------|------|-------|
+| Assetto Corsa | [Geo-11](https://github.com/Stereoscopic3D/ShaderFixes/releases/tag/AssettoCorsa) | Native |
+| Assetto Corsa Competizione | Acer TrueGame | Native |
+| BeamNG.drive | [Geo-11](https://helixmod.blogspot.com/2023/11/beamngdrive.html) | Native |
+| DCS World | [Geo-11](https://helixmod.blogspot.com/2018/02/dcs-25-3d-fix-wip.html) | Native |
+| Dirt Rally 2.0 | Acer TrueGame/[NewAxis](https://github.com/marcussacana/NewAxis) | Native |
+| Dying Light 2 | [SuperDepth3D](https://airtable.com/appByPZJsOQSVGDID/shrAfMuGs1IOIEpRT?uMgeK=reci0NN7x8YDzjtch) | [Head Tracking Mod](https://www.nexusmods.com/dyinglight2/mods/1900) |
+| Elite Dangerous | Native | Native |
+| Euro Truck Simulator 2 | Acer TrueGame/[NewAxis](https://github.com/marcussacana/NewAxis) | Native |
+| Gone Home | [VorpX](https://www.vorpx.com/) | [Head Tracking Mod](https://github.com/itsloopyo/gone-home-headtracking) |
+| Green Hell | [Geo-11](https://helixmod.blogspot.com/2026/02/green-hell-geo11-fix.html) | [Head Tracking Mod](https://www.nexusmods.com/greenhell/mods/83) |
+| MechWarrior 5: Mercenaries | [Geo-11](https://helixmod.blogspot.com/2020/01/mechwarrior-5-mercenaries.html) | Native |
+| Minecraft: Java Edition | [Stereo 3D mod](https://modrinth.com/mod/stereopsis) | [Head Tracking Mod](https://www.curseforge.com/minecraft/mc-mods/correct-gaming-posture) |
+| Outer Wilds | [Geo-11](https://helixmod.blogspot.com/2019/07/outer-wilds-3d-vision-fix-losti-v100.html) | [Head Tracking Mod](https://outerwildsmods.com/mods/headtracking/) |
+| Star Wars: Squadrons | [Geo-11](https://helixmod.blogspot.com/2025/07/star-wars-squadrons-geo-11-fix-update.html) | Native |
+
+*Add more games to this table as tested and mods released them.*
+
+**Recommended play modes:**
+- **XYZ + Yaw/Pitch** (Mode Z) — Best for most games, full 3-axis head tracking (position + yaw/pitch rotation) without roll
+- **XYZ only** (Mode X) — Pure positional tracking, matches native Leia Simulated Reality display support in games like Stellar Blade, Lies of P and The First Berserker: Khazan
+
+**by [evilkermitreturns](https://github.com/evilkermitreturns)** & [effcol](https://github.com/effcol)
 
 ## Requirements
 
-- Leia display (e.g. Acer SpatialLabs) with SR Platform installed and running
-- [VRto3D](https://github.com/oneup03/VRto3D) with `use_open_track` set to `true` in `Steam/config/vrto3d/default_config.json`
-- SteamVR
-- [LeiaSR SDK](https://www.immersity.ai/) (for building from source)
+- Leia Simulated Reality display (e.g. Acer SpatialLabs, Samsung Odyssey 3D) with LeiaSR Runtime installed and running
+- [OpenTrack](https://github.com/opentrack/opentrack)
+- [LeiaSR SDK](https://www.immersity.ai/sdk/) (for building from source)
 
-## Quick Start
+## How to start
 
-1. Set `"use_open_track": true` in your VRto3D config (`Steam/config/vrto3d/default_config.json`)
-2. Launch SteamVR
-3. Launch your game
-4. Run `leia_track_app.exe`
-5. Press **Ctrl+X** to calibrate your sitting position (look straight at the screen)
-6. Lean to look around!
+1. Run `Simulated_Reality_OpenTrack_Bridge.exe`
+2. Launch OpenTrack
+3. Set Input to UDP over network (should be on this by default)
+4. Press Start in OpenTrack
+5. Launch game or app of choice.
+6. Look around naturally - no manual recenter needed.
 
 ## Controls
 
-Hotkeys only work when the console window is focused — they won't interfere with your game.
+Hotkeys only work when the console window is focused. They won't interfere with your game.
+
+### Tuning Hotkeys
 
 | Key | Action |
 |-----|--------|
-| **Ctrl+X** | Calibrate center position |
 | **Ctrl+L** | Lock/unlock tuning hotkeys |
-| **1/2** | Smoothness at rest (min_cutoff down/up) |
-| **3/4** | Movement response speed (beta down/up) |
-| **5/6** | Yaw sensitivity (left/right lean) |
-| **7/8** | Pitch sensitivity (up/down lean) |
-| **9/0** | Response curve (more linear / more curved) |
-| **-/=** | Max yaw range (down/up) |
-| **[/]** | Max pitch range (down/up) |
+| **1/2** | Yaw/Pitch/Roll smoothness (min_cutoff down/up) |
+| **3/4** | Yaw/Pitch/Roll response speed (beta down/up) |
+| **5/6** | Yaw sensitivity (down/up) |
+| **7/8** | Pitch sensitivity (down/up) |
+| **9/0** | Roll sensitivity (down/up) |
+| **-/=** | Toggle translation passthrough |
+| **[/]** | Toggle radians/degrees orientation input |
+
+### Output Modes
+
+Press one of these keys to switch output modes during gameplay. *Listed in order of reccomendation*:
+
+| Key | Mode | Description |
+|-----|------|-------------|
+| **Z** | X, Y, Z, Yaw, Pitch | 6DOF Head Position and Head Rotation, no roll. |
+| **X** | X, Y, Z | Head Position only, no Head Rotation.<br>*(This is how Leia use Head Tracking in native games, like Stellar Blade and Lies of P. Avoids [Motion Parallax Conflict](https://www.pcgamingwiki.com/wiki/Glossary:Native_3D#Motion_Parallax_Conflict).)* |
+| **C** |  Yaw, Pitch | 3DOF Head Rotation only, no roll. |
+| **V** | X, Y, Z, Yaw, Pitch, Roll | 6DOF Head Position and Head Rotation.<br>*(Not reccomended as Roll is unneccisary.)* |
+| **B** |Yaw, Pitch, Roll | 3DOF Head Rotation only, no position.<br>*(Not reccomended as Roll is unneccisary.)* |
+
+### Output Target
+
+| Key | Target | Description |
+|-----|--------|-------------|
+| **A** | OpenTrack | No inversion (default) |
+| **S** | SteamVR/VRto3D | With X, Yaw, Roll inversion (X, Y, Z not working currently) |
 
 Settings auto-save on every change. Press **Ctrl+L** to lock hotkeys and prevent accidental changes.
 
@@ -46,16 +94,25 @@ Settings are saved to `Steam/config/vrto3d/leia_track_config.txt` (next to VRto3
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `filter_mincutoff` | 0.02 | Smoothness at rest. Lower = silkier but laggier |
-| `filter_beta` | 0.3 | Responsiveness to fast movement. Higher = less lag |
-| `sens_yaw` | 3.0 | Degrees of rotation per cm of left/right lean |
-| `sens_pitch` | 2.0 | Degrees of rotation per cm of up/down lean |
-| `curve_power` | 1.2 | Response curve. 1.0 = linear, 2.0+ = gentle center |
-| `mag_strength` | 0.15 | How strongly the center pulls back |
-| `mag_radius` | 2.0 | How far the center pull reaches (cm) |
-| `dead_zone_cm` | 0.2 | Ignore movements smaller than this (cm) |
-| `max_yaw` | 45 | Maximum left/right rotation (degrees) |
-| `max_pitch` | 45 | Maximum up/down rotation (degrees) |
+| `filter_mincutoff` | 0.08 | Yaw/Pitch/Roll smoothness at rest. Lower = smoother but laggier. Position is unfiltered (1:1). |
+| `filter_beta` | 0.08 | Yaw/Pitch/Roll responsiveness to fast movement. Higher = less lag |
+| `angle_deadzone_deg` | 0.2 | Ignore tiny angle noise around center |
+| `orientation_radians` | 1 | Set to 1 when SDK orientation output is radians |
+| `sens_yaw` | 1.0 | Yaw output scale |
+| `sens_pitch` | 1.0 | Pitch output scale |
+| `sens_roll` | 1.0 | Roll output scale |
+| `yaw_offset` | 0.0 | Yaw trim offset in degrees |
+| `pitch_offset` | 0.0 | Pitch trim offset in degrees |
+| `roll_offset` | 0.0 | Roll trim offset in degrees |
+| `max_yaw` | 70 | Maximum yaw output (degrees) |
+| `max_pitch` | 70 | Maximum pitch output (degrees) |
+| `max_roll` | 70 | Maximum roll output (degrees) |
+| `passthrough_translation` | 1 | Include position X/Y/Z in OpenTrack packet |
+| `invert_x` | 0 | Invert X translation output (managed by output target) |
+| `invert_yaw` | 0 | Invert yaw output (managed by output target) |
+| `invert_roll` | 0 | Invert roll output (managed by output target) |
+| `output_mode` | 1 | 1: XYZ+YP (default), 2: XYZ, 3: XYZ+YPR, 4: YPR, 5: YP |
+| `output_target` | 1 | 1: OpenTrack (default), 2: SteamVR/VRto3D |
 
 ### Editing the Config File
 
@@ -68,16 +125,25 @@ C:\Program Files (x86)\Steam\config\vrto3d\leia_track_config.txt
 Example contents:
 ```
 # Leia Track App — Settings
-filter_mincutoff = 0.02
-filter_beta = 0.3
-sens_yaw = 3
-sens_pitch = 2
-curve_power = 1.2
-mag_strength = 0.15
-mag_radius = 2
-dead_zone_cm = 0.2
-max_yaw = 45
-max_pitch = 45
+filter_mincutoff = 0.08
+filter_beta = 0.08
+angle_deadzone_deg = 0.2
+orientation_radians = 1
+sens_yaw = 1
+sens_pitch = 1
+sens_roll = 1
+yaw_offset = 0
+pitch_offset = 0
+roll_offset = 0
+max_yaw = 70
+max_pitch = 70
+max_roll = 70
+passthrough_translation = 1
+invert_x = 0
+invert_yaw = 0
+invert_roll = 0
+output_mode = 1
+output_target = 1
 ```
 
 Lines starting with `#` are comments. Any setting not in the file uses its default value. Changes take effect next time you launch the app.
@@ -96,25 +162,20 @@ cmake --build . --config Release
 ## How It Works
 
 ```
-Leia IR Camera → SR SDK (eye positions)
-    → Lean offset from calibrated center
+Leia IR Camera → SR SDK (head pose)
+    → Orientation unit conversion (radians/degrees)
     → One-Euro filter (speed-adaptive smoothing)
-    → Magnetic center pull (gentle return to neutral)
-    → Smooth dead zone (no snap at center)
-    → Power curve sensitivity mapping
+    → Sensitivity + trim offsets
     → Clamp to max rotation
+    → Optional translation passthrough
     → OpenTrack UDP (port 4242)
-    → VRto3D → SteamVR camera rotation
+    → OpenTrack Software → Any Supported Game
 ```
 
 ## Tips
 
-- **Calibrate often** — press Ctrl+X whenever you shift in your seat
 - **Good lighting helps** — the IR camera works best with some ambient light
-- **For racing/flight sims** — try lower sensitivity (keys 5/7) for subtle looks
-- **For action games** — try higher sensitivity (keys 6/8) for quick glances
 - **Lock when playing** — press Ctrl+L to prevent accidental hotkey presses
-- **VRto3D's `launch_script`** — set to `"start leia_track_app.exe"` to auto-launch with VRto3D
 
 ## License
 
