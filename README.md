@@ -1,6 +1,6 @@
 # Simulated Reality OpenTrack Bridge
 
-**A fork of Leia Track App focused on OpenTrack integration with full 6DOF head tracking support.**
+Leia Track App focused on OpenTrack integration with full 6DOF head tracking support.**
 
 Standalone head tracking for any OpenTrack-compatible game using a Leia Simulated Reality sparse lightfield display.
 
