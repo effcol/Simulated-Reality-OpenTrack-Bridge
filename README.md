@@ -2,14 +2,15 @@
 
 **A fork of Leia Track App focused on OpenTrack integration with full 6DOF head tracking support.**
 
-Standalone head tracking for any OpenTrack-compatible game using a Leia Simulated Reality sparse lightfield display.
+Standalone head tracking for any OpenTrack-compatible game using a Leia Simulated Reality sparse lightfield display, such as Acer SpatialLabs and Samsung Odyssey 3D. By [evilkermitreturns](https://github.com/evilkermitreturns) & [effcol](https://github.com/effcol).
 
-Reads head pose from the LeiaSR Runtime, applies a [One-Euro filter](https://gery.casiez.net/1euro/) for smooth adaptive filtering on yaw, pitch and roll, and sends stable 6DOF pose (position + orientation) as OpenTrack UDP to [OpenTrack](https://github.com/opentrack/opentrack).
+Reads head pose from the LeiaSR Runtime, applies a [One-Euro filter](https://gery.casiez.net/1euro/) for smooth adaptive filtering on yaw, pitch and roll, and sends stable 6DOF pose (position + orientation) as OpenTrack UDP.
 
 ## Games
 
-Some of the games playable in 3D and headtracking on Leia Simulated Reality monitors:
+### Stereoscopic 3D Games
 
+Use with [OpenTrack](https://github.com/opentrack/opentrack/releases). *More games to be added as tested and released.*
 | Title | 3D support | OpenTrack Support |
 |-------|------|-------|
 | Assetto Corsa | [Geo-11](https://github.com/Stereoscopic3D/ShaderFixes/releases/tag/AssettoCorsa) | Native |
@@ -37,19 +38,24 @@ Some of the games playable in 3D and headtracking on Leia Simulated Reality moni
 | Star Wars: Squadrons | [Geo-11](https://helixmod.blogspot.com/2025/07/star-wars-squadrons-geo-11-fix-update.html) | Native |
 | Subnautica | [Geo-11](https://helixmod.blogspot.com/2024/08/subnautica-final-version202371288.html) | [Head Tracking Mod](https://github.com/itsloopyo/subnautica-headtracking) |
 
-*More games to be added as tested and released.*
 
-**Recommended play modes:**
+### VR Games
+
+Use with [VRto3D](https://github.com/oneup03/VRto3D) to add full 6DOF head tracking to any VR game or VR game mod like [UEVR](https://github.com/praydog/UEVR), [R.E.A.L. VR](https://github.com/oneup03/VRto3D/wiki/UEVR), [NoMoreFlat](https://github.com/oneup03/VRto3D/wiki/NoMoreFlat), [REFramework](https://github.com/oneup03/VRto3D/wiki/REFramework) or [BetterVR](https://github.com/oneup03/VRto3D/wiki/BetterVR).
+
+**Requires:** [VRto3D pre-release r486@f06b070](https://github.com/oneup03/VRto3D/releases) or later.
+
+Follow [VRto3D's Simulated Reality installation guide](https://github.com/oneup03/VRto3D?tab=readme-ov-file#sr-simulated-reality-displays-only-if-you-need-this-output-format) and start your favorite VR game or mod!. Your head movements are tracked in real-time with full 6DOF support.
+
+## **Recommended play modes:**
 - **X, Y, Z, Yaw, Pitch** (Mode Z) — Best for most games, full 3-axis head tracking (position + yaw/pitch rotation) without roll
 - **X, Y, Z only** (Mode X) — Pure positional tracking, matches the tracking on natively developed [LeiaSR SDK](https://support.immersity.ai/sdk/native-sdk-c-c++/index) games like The First Berserker: Khazan, Stellar Blade and Lies of P.
-
-**by [evilkermitreturns](https://github.com/evilkermitreturns)** & [effcol](https://github.com/effcol)
 
 ## Requirements
 
 - Leia Simulated Reality display (e.g. Acer SpatialLabs, Samsung Odyssey 3D)
-- LeiaSR Runtime installed and running (installs via [SpatialLabs Experience  Centre](https://www.acer.com/gb-en/support/product-support/PSV27-2) or [Odyssey 3D Hub](https://www.samsung.com/levant/support/model/LS27FG900XMXUE/))
-- [OpenTrack](https://github.com/opentrack/opentrack)
+- LeiaSR Runtime installed and running (installs via [SpatialLabs Experience Centre](https://www.acer.com/gb-en/support/product-support/PSV27-2) or [Odyssey 3D Hub](https://www.samsung.com/levant/support/model/LS27FG900XMXUE/))
+- [OpenTrack](https://github.com/opentrack/opentrack) or [VRto3D](https://github.com/oneup03/VRto3D)
 - [LeiaSR SDK](https://www.immersity.ai/sdk/) (for building from source)
 
 ## How to start
@@ -113,7 +119,7 @@ Settings are saved to `opentrack_bridge_config.txt` (next to the executable) and
 | `max_yaw` | 70 | Maximum yaw output (degrees) |
 | `max_pitch` | 70 | Maximum pitch output (degrees) |
 | `max_roll` | 70 | Maximum roll output (degrees) |
-| `passthrough_translation` | 1 | Include position x, Y, Z in OpenTrack packet |
+| `passthrough_translation` | 1 | Include position X, Y, Z in OpenTrack packet |
 | `invert_x` | 1 | Invert X translation output (OpenTrack convention) |
 | `invert_yaw` | 1 | Invert yaw output (OpenTrack convention) |
 | `invert_roll` | 0 | Invert roll output. Set to 1 if head roll appears inverted (right roll = ground up). |
